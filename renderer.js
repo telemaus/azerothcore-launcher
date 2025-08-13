@@ -64,7 +64,7 @@ ipcRenderer.on('process-status', (event, name, status) => {
             cy="16"
             fill="none"
             stroke="#e5e5e5"
-            stroke-width="2"
+            stroke-width="2.5"
           />
           <circle
             class="progress-indicator"
@@ -73,11 +73,11 @@ ipcRenderer.on('process-status', (event, name, status) => {
             cy="16"
             fill="none"
             stroke="#3b82f6"
-            stroke-width="2"
+            stroke-width="2.5"
             stroke-dasharray="87.96"
             stroke-dashoffset="87.96"
             transform="rotate(-90 16 16)"
-            style="animation: progress-animation ${duration}ms linear forwards"
+            style="animation: progress-animation ${duration}ms ease-out forwards"
           />
         </svg>`;
       // Add the animation style if it doesn't exist
@@ -86,9 +86,15 @@ ipcRenderer.on('process-status', (event, name, status) => {
         style.id = 'progress-animation-style';
         style.textContent = `
           @keyframes progress-animation {
-            to {
+            0% {
+              stroke-dashoffset: 87.96;
+            }
+            100% {
               stroke-dashoffset: 0;
             }
+          }
+          .progress-circle {
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
           }
         `;
         document.head.appendChild(style);
