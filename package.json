@@ -1,7 +1,7 @@
 {
   "name": "azerothcore-launcher",
   "version": "1.1.0",
-  "description": "Mini launcher to allow easy management of db/ auth/ world component when running a local azerothcore server",
+  "description": "🚀 Desktop launcher for AzerothCore WoW private servers - Easy one-click management of database, authentication, and world server components with a beautiful GUI",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
