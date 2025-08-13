@@ -1,14 +1,18 @@
-# AzerothCore Launcher
-
-Welcome to the AzerothCore Launcher! This is a simple and user-friendly application that helps you manage your local World of Warcraft private server powered by AzerothCore.
+<div align="center">
+  <img src="icon.ico" alt="AzerothCore Launcher Logo" width="128" height="128">
+  
+  # AzerothCore Launcher
+  
+  ### 🚀 Desktop launcher for AzerothCore WoW private servers
+  
+  Easy one-click management of database, authentication, and world server components with a beautiful GUI
+  
+  <img src="assets/ui.png" alt="AzerothCore Launcher Interface">
+</div>
 
 ## What is this application?
 
 The AzerothCore Launcher is a helpful tool that makes it easy to manage your local World of Warcraft server. It provides a simple interface to control various server components without needing to use complex commands or understand technical details.
-
-<div align="center">
-  <img src="assets/ui.png" alt="AzerothCore Launcher Interface">
-</div>
 
 ## Features
 
