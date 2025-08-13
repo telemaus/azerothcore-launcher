@@ -1,0 +1,50 @@
+{
+  "name": "azerothcore-launcher",
+  "version": "1.1.0",
+  "description": "Mini launcher to allow easy management of db/ auth/ world component when running a local azerothcore server",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "set NODE_ENV=development&& electron .",
+    "dist": "electron-builder --win"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telemaus/azerothcore-launcher.git"
+  },
+  "keywords": ["azerothcore", "wow", "server", "launcher"],
+  "author": "Azerothcore Community",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/telemaus/azerothcore-launcher/issues"
+  },
+  "homepage": "https://github.com/telemaus/azerothcore-launcher#readme",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.yourdomain.azerothcorelauncher",
+    "productName": "Azerothcore Launcher",
+    "publish": null,
+    "win": {
+      "target": {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "displayLanguageSelector": false,
+      "uninstallDisplayName": "Azerothcore Launcher",
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Azerothcore Launcher",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": false
+    }
+  }
+}

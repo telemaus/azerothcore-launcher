@@ -1,0 +1,76 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      - name: Get version from package.json
+        id: get_version
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          echo "VERSION=v$version" >> $env:GITHUB_OUTPUT
+          echo "PACKAGE_VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          $tagExists = git tag -l "${{ steps.get_version.outputs.VERSION }}"
+          if ($tagExists) {
+            echo "Tag ${{ steps.get_version.outputs.VERSION }} already exists!"
+            exit 1
+          }
+
+      - name: Create and push tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag ${{ steps.get_version.outputs.VERSION }}
+          git push origin ${{ steps.get_version.outputs.VERSION }}
+
+      - name: Create self-signed certificate
+        run: |
+          $cert = New-SelfSignedCertificate -Subject "CN=Azerothcore Community" -Type CodeSigning -KeySpec Signature -KeyLength 2048 -KeyAlgorithm RSA -HashAlgorithm SHA256 -Provider "Microsoft Enhanced RSA and AES Cryptographic Provider" -NotAfter (Get-Date).AddYears(3)
+          $password = ConvertTo-SecureString -String "temppassword123" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath "cert.p12" -Password $password
+          echo "CERT_PASSWORD=temppassword123" >> $env:GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Electron app
+        run: npm run dist
+        env:
+          CSC_LINK: cert.p12
+          CSC_KEY_PASSWORD: temppassword123
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          name: "Azerothcore Launcher ${{ steps.get_version.outputs.PACKAGE_VERSION }}"
+          body: ${{ github.event.inputs.release_notes || 'Automated release' }}
+          files: |
+            dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

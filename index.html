@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>AzerothCore Launcher</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="" />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?display=swap&family=Inter:wght@400;500;700;900&family=Noto+Sans:wght@400;500;700;900"
+  />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <style>
+    body {
+      font-family: Inter, "Noto Sans", sans-serif;
+      overflow: hidden;
+    }
+    .compact-button {
+      height: 26px;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="relative flex flex-col bg-neutral-50">
+    <div>
+      <!-- <div class="flex items-center bg-neutral-50 p-2 justify-between">
+        <h2 class="text-[#141414] text-sm font-bold leading-tight tracking-[-0.015em] flex-1 text-center">AzerothCore Launcher</h2>
+      </div> -->
+
+      <div class="flex flex-col gap-1 pt-2.5">
+        <div class="flex justify-center">
+          <div class="flex flex-1 gap-2 px-2 max-w-[360px]">
+            <button id="start-all" class="compact-button flex basis-1/2 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#22c55e] text-white font-bold leading-normal tracking-[0.015em] hover:bg-[#16a34a]">
+              <span class="truncate">Start Servers</span>
+            </button>
+            <button id="restart-all" class="compact-button flex basis-1/2 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#f59e0b] text-white font-bold leading-normal tracking-[0.015em] hover:bg-[#d97706]">
+              <span class="truncate">Restart All</span>
+            </button>
+          </div>
+        </div>
+        <div class="flex justify-center">
+          <div class="flex flex-1 px-2 max-w-[360px] w-full">
+            <button id="stop-all" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#ef4444] text-white font-bold leading-normal tracking-[0.015em] w-full hover:bg-[#dc2626]">
+              <span class="truncate">Stop All</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- <div class="flex justify-center py-2">
+        <div class="h-px bg-neutral-400 w-64"></div>
+      </div> -->
+
+      <!-- <h3 class="text-[#141414] text-sm font-bold leading-tight tracking-[-0.015em] text-center py-1">Server</h3> -->
+
+      <!-- Database Section -->
+      <div class="flex items-center gap-2 bg-neutral-50 px-2 min-h-[32px] justify-between">
+        <p class="text-[#141414] text-sm font-normal leading-normal flex-1 truncate">Database</p>
+        <div class="shrink-0">
+          <div id="status-db" class="text-[#141414] flex size-4 items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-center">
+        <div class="flex flex-1 gap-2 flex-wrap px-2 py-1 max-w-[360px] justify-center">
+          <button id="launch-db" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-black text-neutral-50 font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Launch</span>
+          </button>
+          <button id="stop-db" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#ededed] text-[#141414] font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Stop</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Auth Section -->
+      <div class="flex items-center gap-2 bg-neutral-50 px-2 min-h-[32px] justify-between">
+        <p class="text-[#141414] text-sm font-normal leading-normal flex-1 truncate">Authentication</p>
+        <div class="shrink-0">
+          <div id="status-auth" class="text-[#141414] flex size-4 items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-center">
+        <div class="flex flex-1 gap-2 flex-wrap px-2 py-1 max-w-[360px] justify-center">
+          <button id="launch-auth" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-black text-neutral-50 font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Launch</span>
+          </button>
+          <button id="stop-auth" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#ededed] text-[#141414] font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Stop</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- World Section -->
+      <div class="flex items-center gap-2 bg-neutral-50 px-2 min-h-[32px] justify-between">
+        <p class="text-[#141414] text-sm font-normal leading-normal flex-1 truncate">World</p>
+        <div class="shrink-0">
+          <div id="status-world" class="text-[#141414] flex size-4 items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-center">
+        <div class="flex flex-1 gap-2 flex-wrap px-2 py-1 max-w-[360px] justify-center">
+          <button id="launch-world" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-black text-neutral-50 font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Launch</span>
+          </button>
+          <button id="stop-world" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#ededed] text-[#141414] font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Stop</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-center py-2">
+        <div class="h-px bg-neutral-400 w-64"></div>
+      </div>
+
+      <!-- <h3 class="text-[#141414] text-sm font-bold leading-tight tracking-[-0.015em] text-center py-1">Client</h3> -->
+
+      <!-- Client Section -->
+      <div class="flex items-center gap-2 bg-neutral-50 px-2 min-h-[32px] justify-between">
+        <p class="text-[#141414] text-sm font-normal leading-normal flex-1 truncate">Client</p>
+        <div class="shrink-0">
+          <div id="status-client" class="text-[#141414] flex size-4 items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-center">
+        <div class="flex flex-1 gap-2 flex-wrap px-2 py-1 max-w-[360px] justify-center">
+          <button id="launch-client" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-black text-neutral-50 font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Launch</span>
+          </button>
+          <button id="stop-client" class="compact-button flex cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#ededed] text-[#141414] font-bold leading-normal tracking-[0.015em] grow">
+            <span class="truncate">Stop</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Separator line -->
+    <div class="flex justify-center py-2">
+        <div class="h-px bg-neutral-400 w-64"></div>
+      </div>
+
+    <!-- Options Section -->
+    <div class="flex justify-center">
+      <div class="flex flex-1 px-2 max-w-[360px] w-full">
+        <button id="options-button" class="compact-button flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#262626] text-white font-bold leading-normal tracking-[0.015em] hover:bg-[#404040]">
+          <span class="truncate">Options</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="h-2 bg-neutral-50"></div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
