@@ -325,47 +325,43 @@ ipcMain.handle('stop', async (event, name) => {
 ipcMain.handle('stop-all', async () => {
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   
-  const killProcess = async (proc, name) => {
-    if (!proc) return;
+  const stopProcess = async (name) => {
+    if (!processes[name]) return true;
     
     try {
       // On Windows, we need to kill the entire process tree
       if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', proc.pid, '/f', '/t']);
+        spawn('taskkill', ['/pid', processes[name].pid, '/f', '/t']);
       } else {
-        proc.kill('SIGTERM');
+        processes[name].kill('SIGTERM');
       }
       
       // Wait for the process to actually end
       await new Promise((resolve) => {
-        proc.once('exit', resolve);
+        processes[name].once('exit', resolve);
         // Fallback if process doesn't exit
         setTimeout(resolve, 5000);
       });
       
       processes[name] = null;
       console.log(`${name} process terminated`);
+      return true;
     } catch (error) {
       console.error(`Error killing ${name} process:`, error);
+      return false;
     }
   };
 
   // Stop world server first
-  if (processes['world']) {
-    await killProcess(processes['world'], 'world');
-    await delay(2000);
-  }
+  await stopProcess('world');
+  await delay(1000);
   
   // Then stop auth server
-  if (processes['auth']) {
-    await killProcess(processes['auth'], 'auth');
-    await delay(2000);
-  }
+  await stopProcess('auth');
+  await delay(1000);
   
-  // Finally stop MySQL
-  if (processes['db']) {
-    await killProcess(processes['db'], 'db');
-  }
+  // Finally stop MySQL/DB
+  await stopProcess('db');
   
   return true;
 });
