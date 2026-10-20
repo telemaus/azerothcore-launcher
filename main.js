@@ -207,6 +207,7 @@ function launchProcess(name, command, args = []) {
     const proc = spawn(command, args, { 
       detached: false, // Change to false to maintain process control
       shell: true,
+      windowsHide: process.platform === 'win32' && name === 'db',
       cwd: path.dirname(command), // Set working directory to the directory containing the executable
     });
 

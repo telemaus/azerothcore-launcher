@@ -36,6 +36,7 @@ The AzerothCore Launcher is a helpful tool that makes it easy to manage your loc
 
 3. **Managing Your Server**
    - Use the simple buttons to start or stop different server components
+   - MySQL runs in a visible console when its batch file is opened directly, and hidden in the background when started by the launcher
    - Monitor the status of your server directly from the launcher
    - Access basic server controls without needing to use command lines
 
