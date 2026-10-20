@@ -287,6 +287,71 @@ function isPortReady(port) {
   });
 }
 
+function getListeningProcesses(port) {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$owners = @(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)`,
+    '$processes = foreach ($owner in $owners) {',
+    '  $process = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $owner" -ErrorAction Stop',
+    '  if ($process) {',
+    '    [PSCustomObject]@{ processId = [int]$process.ProcessId; executablePath = [string]$process.ExecutablePath }',
+    '  }',
+    '}',
+    "if ($null -eq $processes) { '[]' } else { ConvertTo-Json -InputObject @($processes) -Compress }"
+  ].join('\n');
+  const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+
+  return new Promise((resolve, reject) => {
+    const query = spawn('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      encodedScript
+    ], { windowsHide: true });
+    let stdout = '';
+    let stderr = '';
+
+    query.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    query.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    query.once('error', reject);
+    query.once('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `PowerShell exited with code ${code}`));
+        return;
+      }
+
+      try {
+        const result = JSON.parse(stdout.trim() || '[]');
+        resolve(Array.isArray(result) ? result : [result]);
+      } catch (error) {
+        reject(new Error(`Could not read the process listening on port ${port}: ${error.message}`));
+      }
+    });
+  });
+}
+
+function stopWindowsProcess(pid) {
+  return new Promise((resolve, reject) => {
+    const killer = spawn('taskkill', ['/pid', String(pid), '/f', '/t'], { windowsHide: true });
+    let stderr = '';
+    killer.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    killer.once('error', reject);
+    killer.once('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr.trim() || `taskkill exited with code ${code}`));
+      }
+    });
+  });
+}
+
 function setServiceStatus(name, status) {
   if (serviceStatus[name] === status) {
     return;
@@ -429,45 +494,118 @@ async function startService(name, waitUntilReady = false) {
   return waitUntilReady ? waitForServiceReady(name) : true;
 }
 
+async function waitForServiceStopped(name, timeout = 10000) {
+  const service = resolveService(name);
+  if (!service) {
+    await updateServiceStatus(name);
+    return serviceStatus[name] === 'Stopped';
+  }
+
+  const deadline = Date.now() + timeout;
+  do {
+    if (!await isPortReady(service.port)) {
+      setServiceStatus(name, 'Stopped');
+      return true;
+    }
+    if (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  } while (Date.now() < deadline);
+
+  await updateServiceStatus(name);
+  return false;
+}
+
 async function stopProcess(name) {
   const proc = processes[name];
-  if (!proc) {
-    if (SERVICE_NAMES.includes(name)) {
-      await updateServiceStatus(name);
-      return serviceStatus[name] === 'Stopped';
+  if (!SERVICE_NAMES.includes(name)) {
+    if (!proc) {
+      return true;
     }
-    return true;
+
+    try {
+      if (process.platform === 'win32') {
+        await stopWindowsProcess(proc.pid);
+      } else {
+        proc.kill('SIGTERM');
+      }
+      await new Promise((resolve) => {
+        if (proc.exitCode !== null || proc.signalCode !== null) {
+          resolve();
+          return;
+        }
+        proc.once('exit', resolve);
+        setTimeout(resolve, 5000);
+      });
+      if (processes[name] === proc) {
+        processes[name] = null;
+      }
+      mainWindow.webContents.send('process-status', name, 'Stopped');
+      return true;
+    } catch (error) {
+      console.error(`Error stopping ${name}:`, error);
+      return false;
+    }
+  }
+
+  const service = resolveService(name);
+  if (!service) {
+    await updateServiceStatus(name);
+    return serviceStatus[name] === 'Stopped';
   }
 
   try {
-    if (process.platform === 'win32') {
-      const killer = spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { windowsHide: true });
-      await new Promise((resolve, reject) => {
-        killer.once('error', reject);
-        killer.once('exit', (code) => code === 0
-          ? resolve()
-          : reject(new Error(`taskkill exited with code ${code}`)));
-      });
-    } else {
-      proc.kill('SIGTERM');
+    if (proc && proc.exitCode === null && proc.signalCode === null) {
+      if (process.platform === 'win32') {
+        await stopWindowsProcess(proc.pid);
+      } else {
+        proc.kill('SIGTERM');
+      }
+      if (processes[name] === proc) {
+        processes[name] = null;
+      }
+      if (await waitForServiceStopped(name, 5000)) {
+        return true;
+      }
+    } else if (await waitForServiceStopped(name, 0)) {
+      return true;
     }
 
-    await new Promise((resolve) => {
-      if (proc.exitCode !== null || proc.signalCode !== null) {
-        resolve();
-        return;
+    if (process.platform !== 'win32') {
+      throw new Error(`Cannot safely stop an externally started ${name} process on this platform.`);
+    }
+
+    const expectedPath = path.resolve(service.command).toLowerCase();
+    const listeningProcesses = await getListeningProcesses(service.port);
+    const matchingProcesses = listeningProcesses.filter((candidate) => (
+      typeof candidate.executablePath === 'string'
+      && Number.isInteger(candidate.processId)
+      && candidate.processId > 0
+      && path.resolve(candidate.executablePath).toLowerCase() === expectedPath
+    ));
+    if (matchingProcesses.length === 0) {
+      if (await waitForServiceStopped(name, 0)) {
+        return true;
       }
-      proc.once('exit', resolve);
-      setTimeout(resolve, 5000);
-    });
-    if (processes[name] === proc) {
-      processes[name] = null;
+      throw new Error(
+        `A process is listening on port ${service.port}, but it does not match the configured ${name} executable.`
+      );
     }
-    if (SERVICE_NAMES.includes(name)) {
-      await updateServiceStatus(name);
-      return serviceStatus[name] === 'Stopped';
+
+    for (const candidate of matchingProcesses) {
+      try {
+        await stopWindowsProcess(candidate.processId);
+      } catch (error) {
+        if (await waitForServiceStopped(name, 0)) {
+          return true;
+        }
+        throw error;
+      }
     }
-    mainWindow.webContents.send('process-status', name, 'Stopped');
+    const stopped = await waitForServiceStopped(name);
+    if (!stopped) {
+      throw new Error(`${name} is still listening on port ${service.port} after the stop request.`);
+    }
     return true;
   } catch (error) {
     console.error(`Error stopping ${name}:`, error);

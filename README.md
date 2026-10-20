@@ -37,6 +37,7 @@ The AzerothCore Launcher is a helpful tool that makes it easy to manage your loc
 3. **Managing Your Server**
    - Use the simple buttons to start or stop different server components
    - MySQL runs in a visible console when its batch file is opened directly, and hidden in the background when started by the launcher
+   - Stop can also stop a service started outside the launcher, provided its listening process matches the configured executable
    - Service status is polled from the configured MySQL, auth, and world TCP ports: empty means stopped, yellow means starting, and green means ready
    - Access basic server controls without needing to use command lines
 

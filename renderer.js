@@ -37,8 +37,13 @@ for (const [name, btns] of Object.entries(buttons)) {
   if (btns.stop) {
     btns.stop.addEventListener('click', async () => {
       if (confirm(`Are you sure you want to stop the ${name.toUpperCase()}?`)) {
-        const result = await ipcRenderer.invoke('stop', name);
-        if (!result) alert(`${name} failed to stop.`);
+        try {
+          const result = await ipcRenderer.invoke('stop', name);
+          if (!result) alert(`${name} failed to stop. Check the launcher logs for details.`);
+        } catch (error) {
+          console.error(`Could not stop ${name}:`, error);
+          alert(`Could not stop ${name}: ${error.message}`);
+        }
       }
     });
   }
@@ -96,9 +101,16 @@ stopAllButton.addEventListener('click', async () => {
   if (confirm('Are you sure you want to stop all servers?')) {
     stopAllButton.disabled = true;
     stopAllButton.textContent = 'Stopping Servers...';
-    await ipcRenderer.invoke('stop-all');
-    stopAllButton.textContent = 'Stop Servers';
-    stopAllButton.disabled = false;
+    try {
+      const result = await ipcRenderer.invoke('stop-all');
+      if (!result) alert('One or more servers failed to stop. Check the launcher logs for details.');
+    } catch (error) {
+      console.error('Could not stop all servers:', error);
+      alert(`Could not stop all servers: ${error.message}`);
+    } finally {
+      stopAllButton.textContent = 'Stop Servers';
+      stopAllButton.disabled = false;
+    }
   }
 });
 
