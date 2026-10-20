@@ -1,11 +1,19 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const { loadConfig, saveConfig, defaultConfig } = require('./config');
 
 let mainWindow;
+let pathSettingsWindow;
 const processes = {};
 let config = defaultConfig;
+const PATH_OPTIONS = {
+  db: { label: 'MySQL start script', extensions: ['bat'] },
+  auth: { label: 'Auth server', extensions: ['exe'] },
+  world: { label: 'World server', extensions: ['exe'] },
+  client: { label: 'WoW client (optional)', extensions: ['exe'], optional: true }
+};
 
 // Centralized delay configurations
 const SERVER_DELAYS = {
@@ -31,133 +39,162 @@ async function createWindow() {
   });
 
   mainWindow.setMenu(null);
-  await mainWindow.loadFile('index.html');
+  await mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
   // Load configuration after window is ready
-  config = loadConfig();
+  const savedConfig = loadConfig();
+  config = {
+    ...defaultConfig,
+    ...(savedConfig && typeof savedConfig === 'object' ? savedConfig : {}),
+    paths: {
+      ...defaultConfig.paths,
+      ...(savedConfig && savedConfig.paths && typeof savedConfig.paths === 'object' ? savedConfig.paths : {})
+    }
+  };
   console.log('Configuration loaded:', config);
   if (!config.isConfigured) {
-    await showSetupDialog();
+    await openPathSettings();
   }
 }
 
-async function showSetupDialog() {
+function openPathSettings() {
+  if (pathSettingsWindow && !pathSettingsWindow.isDestroyed()) {
+    pathSettingsWindow.focus();
+    return Promise.resolve();
+  }
+
+  pathSettingsWindow = new BrowserWindow({
+    width: 900,
+    height: 390,
+    minWidth: 760,
+    minHeight: 360,
+    parent: mainWindow,
+    modal: true,
+    icon: path.join(__dirname, 'icon.ico'),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
+    backgroundColor: '#f8fafc'
+  });
+
+  pathSettingsWindow.setMenu(null);
+  pathSettingsWindow.on('closed', () => {
+    pathSettingsWindow = null;
+    if (!config.isConfigured) {
+      app.quit();
+    }
+  });
+
+  return pathSettingsWindow.loadFile(path.join(__dirname, 'path-settings.html'));
+}
+
+ipcMain.handle('open-path-settings', async () => {
+  await openPathSettings();
+  return true;
+});
+
+ipcMain.handle('get-config-paths', () => ({ ...config.paths }));
+
+ipcMain.handle('select-config-path', async (_event, name) => {
+  const option = PATH_OPTIONS[name];
+  if (!option) {
+    throw new Error(`Unknown path setting: ${name}`);
+  }
+
+  const result = await dialog.showOpenDialog(pathSettingsWindow, {
+    title: `Select ${option.label}`,
+    filters: [{ name: option.label, extensions: option.extensions }],
+    properties: ['openFile']
+  });
+
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('reveal-config-path', async (_event, value) => {
+  if (typeof value !== 'string' || !value.trim()) {
+    return 'No path is configured for this item.';
+  }
+
+  const target = path.resolve(value);
   try {
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'First Time Setup',
-      message: 'Welcome to AzerothCore Launcher! We need to configure your server paths.',
-      buttons: ['Configure Now', 'Exit'],
-      defaultId: 0,
-      cancelId: 1,
-    });
-
-    if (result.response === 1) {
-      app.quit();
-      return;
-    }
-
-    // MySQL Database script selection
-    await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'MySQL Start Script Selection',
-      message: 'Please select your MySQL start script (start_mysql.bat)\n\nThis file is usually located in your AzerothCore server directory and is used to start the MySQL database.',
-      buttons: ['Select File']
-    });
-
-    const dbResult = await dialog.showOpenDialog(mainWindow, {
-      title: 'Select MySQL Start Script (start_mysql.bat)',
-      filters: [{ name: 'Batch Files', extensions: ['bat'] }],
-      properties: ['openFile']
-    });
-
-    if (!dbResult.canceled) {
-      config.paths.db = dbResult.filePaths[0];
-    }
-
-    // Auth Server selection
-    await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Auth Server Selection',
-      message: 'Please select your Auth Server executable (authserver.exe)\n\nThis is the authentication server that handles player logins. It should be in your AzerothCore server directory.',
-      buttons: ['Select File']
-    });
-
-    const authResult = await dialog.showOpenDialog(mainWindow, {
-      title: 'Select Auth Server Executable (authserver.exe)',
-      filters: [{ name: 'Executable', extensions: ['exe'] }],
-      properties: ['openFile']
-    });
-
-    if (!authResult.canceled) {
-      config.paths.auth = authResult.filePaths[0];
-    }
-
-    // World Server selection
-    await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'World Server Selection',
-      message: 'Please select your World Server executable (worldserver.exe)\n\nThis is the main game server that handles the game world. It should be in your AzerothCore server directory.',
-      buttons: ['Select File']
-    });
-
-    const worldResult = await dialog.showOpenDialog(mainWindow, {
-      title: 'Select World Server Executable (worldserver.exe)',
-      filters: [{ name: 'Executable', extensions: ['exe'] }],
-      properties: ['openFile']
-    });
-
-    if (!worldResult.canceled) {
-      config.paths.world = worldResult.filePaths[0];
-    }
-
-    // WoW Client selection
-    const clientChoice = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'WoW Client Selection',
-      message: 'Would you like to configure the World of Warcraft client executable (Wow.exe)?\n\nThis is optional and can be configured later through the Options menu.',
-      buttons: ['Select File', 'Skip'],
-      defaultId: 0,
-      cancelId: 1
-    });
-
-    if (clientChoice.response === 0) {
-      const clientResult = await dialog.showOpenDialog(mainWindow, {
-        title: 'Select WoW Client Executable (Wow.exe)',
-        filters: [{ name: 'Executable', extensions: ['exe'] }],
-        properties: ['openFile']
-      });
-
-      if (!clientResult.canceled) {
-        config.paths.client = clientResult.filePaths[0];
-      }
-    }
-
-    // Verify required paths are set (client is optional)
-    if (config.paths.db && config.paths.auth && config.paths.world) {
-      config.isConfigured = true;
-      saveConfig(config);
-      console.log('Configuration saved:', config);
-    } else {
-      await dialog.showMessageBox(mainWindow, {
-        type: 'error',
-        title: 'Setup Incomplete',
-        message: 'Required server components were not configured. The application will now exit.',
-        buttons: ['OK']
-      });
-      app.quit();
+    if (!fs.statSync(target).isFile()) {
+      return `The configured path is not a file: ${target}`;
     }
   } catch (error) {
-    console.error('Setup error:', error);
-    await dialog.showMessageBox(mainWindow, {
-      type: 'error',
-      title: 'Setup Error',
-      message: 'An error occurred during setup. The application will now exit.',
-      buttons: ['OK']
-    });
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR' || error.code === 'EACCES') {
+      return `The configured path does not exist: ${target}`;
+    }
+    throw error;
+  }
+
+  shell.showItemInFolder(target);
+  return null;
+});
+
+ipcMain.handle('save-config-paths', (_event, paths) => {
+  if (!paths || typeof paths !== 'object') {
+    return { success: false, error: 'Invalid path settings.' };
+  }
+
+  const validatedPaths = {};
+  for (const [name, option] of Object.entries(PATH_OPTIONS)) {
+    const value = typeof paths[name] === 'string' ? paths[name].trim() : '';
+    if (option.optional && !value) {
+      validatedPaths[name] = '';
+      continue;
+    }
+
+    if (!value) {
+      return { success: false, error: `${option.label} is required.` };
+    }
+
+    const selectedPath = path.resolve(value);
+    let isFile = false;
+    try {
+      isFile = fs.statSync(selectedPath).isFile();
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR' && error.code !== 'EACCES') {
+        throw error;
+      }
+    }
+    if (!isFile) {
+      return { success: false, error: `${option.label} file was not found: ${selectedPath}` };
+    }
+
+    if (!option.extensions.includes(path.extname(selectedPath).slice(1).toLowerCase())) {
+      return { success: false, error: `${option.label} must be a .${option.extensions.join(' or .')} file.` };
+    }
+
+    validatedPaths[name] = selectedPath;
+  }
+
+  const previousConfig = config;
+  config = {
+    ...config,
+    paths: validatedPaths,
+    isConfigured: true
+  };
+  if (!saveConfig(config)) {
+    config = previousConfig;
+    return { success: false, error: 'Could not save the path settings.' };
+  }
+
+  if (pathSettingsWindow && !pathSettingsWindow.isDestroyed()) {
+    pathSettingsWindow.close();
+  }
+  return { success: true };
+});
+
+ipcMain.handle('close-path-settings', () => {
+  if (config.isConfigured) {
+    if (pathSettingsWindow && !pathSettingsWindow.isDestroyed()) {
+      pathSettingsWindow.close();
+    }
+  } else {
     app.quit();
   }
-}
+});
 
 function launchProcess(name, command, args = []) {
   if (processes[name]) {
@@ -264,8 +301,8 @@ ipcMain.handle('restart', async (event, name) => {
 
 // Add configuration related IPC handlers
 ipcMain.handle('reconfigure', async () => {
-  await showSetupDialog();
-  return config.isConfigured;
+  await openPathSettings();
+  return true;
 });
 
 // Handle starting all servers and client

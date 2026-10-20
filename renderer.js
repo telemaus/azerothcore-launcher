@@ -141,15 +141,14 @@ stopAllButton.addEventListener('click', async () => {
 // Add options button handler
 const optionsButton = document.getElementById('options-button');
 optionsButton.addEventListener('click', async () => {
-  if (confirm('Do you want to reconfigure the server paths?')) {
-    optionsButton.disabled = true;
-    optionsButton.textContent = 'Configuring...';
-    const result = await ipcRenderer.invoke('reconfigure');
-    optionsButton.textContent = 'Options';
+  optionsButton.disabled = true;
+  try {
+    await ipcRenderer.invoke('open-path-settings');
+  } catch (error) {
+    console.error('Could not open path settings:', error);
+    alert(`Could not open path settings: ${error.message}`);
+  } finally {
     optionsButton.disabled = false;
-    if (!result) {
-      alert('Failed to save the configuration. Please try again.');
-    }
   }
 });
 
@@ -167,5 +166,4 @@ restartAllButton.addEventListener('click', async () => {
     restartAllButton.disabled = false;
   }
 });
-
 

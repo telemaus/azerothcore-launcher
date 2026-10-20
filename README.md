@@ -28,8 +28,9 @@ The AzerothCore Launcher is a helpful tool that makes it easy to manage your loc
    - Launch the application from your desktop or start menu
 
 2. **Getting Started**
-   - When you first open the launcher, it will guide you through the initial setup
-   - Follow the on-screen instructions to configure your server settings
+   - When you first open the launcher, use the Server Paths window to configure your server files
+   - Use the Options button to review or change paths later
+   - Use Browse to select a file, or the folder icon to locate the current file in File Explorer
    - Once setup is complete, you're ready to start managing your server!
 
 3. **Managing Your Server**
