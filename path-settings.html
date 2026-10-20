@@ -8,25 +8,30 @@
     * {
       box-sizing: border-box;
     }
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+    }
     body {
       margin: 0;
-      padding: 24px;
+      padding: 20px 24px;
       background: #f8fafc;
       color: #172033;
       font-family: "Segoe UI", Arial, sans-serif;
     }
     h1 {
-      margin: 0 0 6px;
+      margin: 0 0 4px;
       font-size: 21px;
     }
     .description {
-      margin: 0 0 20px;
+      margin: 0 0 16px;
       color: #64748b;
       font-size: 13px;
     }
     .path-list {
       display: grid;
-      gap: 12px;
+      gap: 10px;
     }
     .path-row {
       display: grid;
@@ -87,7 +92,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      margin-top: 22px;
+      margin-top: 18px;
     }
     #message {
       min-height: 18px;
@@ -115,7 +120,7 @@
     }
     @media (max-width: 700px) {
       body {
-        padding: 18px;
+        padding: 16px 18px;
       }
       .path-row {
         grid-template-columns: 1fr 40px 78px;

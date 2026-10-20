@@ -70,9 +70,9 @@ function openPathSettings() {
 
   pathSettingsWindow = new BrowserWindow({
     width: 900,
-    height: 390,
+    height: 440,
     minWidth: 760,
-    minHeight: 360,
+    minHeight: 420,
     parent: mainWindow,
     modal: true,
     icon: path.join(__dirname, 'icon.ico'),
