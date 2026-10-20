@@ -1,27 +1,30 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const net = require('net');
 const path = require('path');
 const { loadConfig, saveConfig, defaultConfig } = require('./config');
 
 let mainWindow;
 let pathSettingsWindow;
 const processes = {};
+const serviceStatus = { db: 'Stopped', auth: 'Stopped', world: 'Stopped' };
+const serviceChecksInProgress = new Map();
 let config = defaultConfig;
 const PATH_OPTIONS = {
-  db: { label: 'MySQL start script', extensions: ['bat'] },
+  db: { label: 'MySQL server or start script', extensions: ['bat', 'exe'] },
   auth: { label: 'Auth server', extensions: ['exe'] },
   world: { label: 'World server', extensions: ['exe'] },
   client: { label: 'WoW client (optional)', extensions: ['exe'], optional: true }
 };
 
-// Centralized delay configurations
-const SERVER_DELAYS = {
-  db: 5000,      // 5 seconds for database
-  auth: 3000,    // 3 seconds for auth server
-  world: 25000,  // 25 seconds for world server
-  process: 1000  // 1 second for general process operations
+const SERVICES = {
+  db: { port: 3307, timeout: 120000, configName: 'my.ini', portKey: 'port' },
+  auth: { port: 3724, timeout: 90000, configName: path.join('configs', 'authserver.conf'), portKey: 'RealmServerPort' },
+  world: { port: 8085, timeout: 240000, configName: path.join('configs', 'worldserver.conf'), portKey: 'WorldServerPort' }
 };
+const SERVICE_NAMES = Object.keys(SERVICES);
+const SERVICE_POLL_INTERVAL = 1500;
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -55,6 +58,7 @@ async function createWindow() {
   if (!config.isConfigured) {
     await openPathSettings();
   }
+  startServiceMonitoring();
 }
 
 function openPathSettings() {
@@ -196,19 +200,166 @@ ipcMain.handle('close-path-settings', () => {
   }
 });
 
+function findConfigFile(directory, configName) {
+  let currentDirectory = directory;
+  for (let level = 0; level < 5; level += 1) {
+    const candidate = path.join(currentDirectory, configName);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+    const parentDirectory = path.dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) {
+      break;
+    }
+    currentDirectory = parentDirectory;
+  }
+  return null;
+}
+
+function readConfiguredPort(configPath, portKey, fallbackPort) {
+  if (!configPath) {
+    return fallbackPort;
+  }
+  try {
+    const configText = fs.readFileSync(configPath, 'utf8');
+    const escapedKey = portKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = configText.match(new RegExp(`^\\s*${escapedKey}\\s*=\\s*(\\d+)`, 'im'));
+    return match ? Number(match[1]) : fallbackPort;
+  } catch (error) {
+    console.warn(`Could not read service config ${configPath}:`, error.message);
+    return fallbackPort;
+  }
+}
+
+function resolveService(name) {
+  const service = SERVICES[name];
+  const configuredPath = config.paths[name];
+  if (!service || !configuredPath) {
+    return null;
+  }
+
+  let command = configuredPath;
+  let args = [];
+  let configPath = findConfigFile(path.dirname(configuredPath), service.configName);
+
+  if (name === 'db') {
+    if (path.extname(configuredPath).toLowerCase() === '.bat') {
+      const serverDirectory = path.dirname(configuredPath);
+      const mysqlExecutable = path.join(serverDirectory, 'mysql', 'bin', 'mysqld.exe');
+      const mysqlConfig = path.join(serverDirectory, 'my.ini');
+      if (fs.existsSync(mysqlExecutable) && fs.existsSync(mysqlConfig)) {
+        command = mysqlExecutable;
+        args = [`--defaults-file=${mysqlConfig}`];
+        configPath = mysqlConfig;
+      }
+    } else {
+      configPath = findConfigFile(path.dirname(configuredPath), service.configName);
+      if (configPath) {
+        args = [`--defaults-file=${configPath}`];
+      }
+    }
+  }
+
+  return {
+    command,
+    args,
+    port: readConfiguredPort(configPath, service.portKey, service.port)
+  };
+}
+
+function isPortReady(port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port });
+    let settled = false;
+    const finish = (ready) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      socket.destroy();
+      resolve(ready);
+    };
+
+    socket.setTimeout(1000);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
+function setServiceStatus(name, status) {
+  if (serviceStatus[name] === status) {
+    return;
+  }
+  serviceStatus[name] = status;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('process-status', name, status);
+  }
+}
+
+async function updateServiceStatus(name) {
+  const existingCheck = serviceChecksInProgress.get(name);
+  if (existingCheck) {
+    return existingCheck;
+  }
+
+  const check = (async () => {
+    const service = resolveService(name);
+    const ready = service ? await isPortReady(service.port) : false;
+    const processIsStarting = Boolean(
+      processes[name] && processes[name].exitCode === null && processes[name].signalCode === null
+    );
+    setServiceStatus(name, ready ? 'Running' : processIsStarting ? 'Starting' : 'Stopped');
+    return ready;
+  })();
+  serviceChecksInProgress.set(name, check);
+  try {
+    return await check;
+  } finally {
+    if (serviceChecksInProgress.get(name) === check) {
+      serviceChecksInProgress.delete(name);
+    }
+  }
+}
+
+function startServiceMonitoring() {
+  for (const name of SERVICE_NAMES) {
+    void updateServiceStatus(name);
+  }
+  setInterval(() => {
+    for (const name of SERVICE_NAMES) {
+      void updateServiceStatus(name);
+    }
+  }, SERVICE_POLL_INTERVAL);
+}
+
+async function waitForServiceReady(name) {
+  const deadline = Date.now() + SERVICES[name].timeout;
+  while (Date.now() < deadline) {
+    if (await updateServiceStatus(name)) {
+      return true;
+    }
+    if (!processes[name]) {
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return updateServiceStatus(name);
+}
+
 function launchProcess(name, command, args = []) {
   if (processes[name]) {
-    return false; // Already running
+    return false;
   }
 
   console.log(`Launching ${name} with command: ${command}`);
-  
   try {
-    const proc = spawn(command, args, { 
-      detached: false, // Change to false to maintain process control
-      shell: true,
+    const isBatchFile = path.extname(command).toLowerCase() === '.bat';
+    const proc = spawn(command, args, {
+      detached: false,
+      shell: isBatchFile && process.platform === 'win32',
       windowsHide: process.platform === 'win32' && name === 'db',
-      cwd: path.dirname(command), // Set working directory to the directory containing the executable
+      cwd: path.dirname(command)
     });
 
     proc.stdout.on('data', (data) => {
@@ -225,20 +376,27 @@ function launchProcess(name, command, args = []) {
       console.error(`${name} failed to start:`, error);
       mainWindow.webContents.send('process-log', name, 'error', `Failed to start: ${error.message}`);
       processes[name] = null;
-      mainWindow.webContents.send('process-status', name, 'Error');
+      if (SERVICE_NAMES.includes(name)) {
+        void updateServiceStatus(name);
+      } else {
+        mainWindow.webContents.send('process-status', name, 'Error');
+      }
     });
 
     proc.on('exit', (code, signal) => {
       console.log(`${name} exited with code ${code} and signal ${signal}`);
       processes[name] = null;
-      mainWindow.webContents.send('process-status', name, 'Stopped');
       mainWindow.webContents.send('process-log', name, 'info', `Process exited with code ${code}`);
+      if (SERVICE_NAMES.includes(name)) {
+        void updateServiceStatus(name);
+      } else {
+        mainWindow.webContents.send('process-status', name, 'Stopped');
+      }
     });
 
     processes[name] = proc;
-    if (['db', 'auth', 'world'].includes(name)) {
-      const startDelay = SERVER_DELAYS[name];
-      mainWindow.webContents.send('process-status', name, `Starting-${startDelay}`);
+    if (SERVICE_NAMES.includes(name)) {
+      setServiceStatus(name, 'Starting');
     } else {
       mainWindow.webContents.send('process-status', name, 'Running');
     }
@@ -250,41 +408,92 @@ function launchProcess(name, command, args = []) {
   }
 }
 
-async function restartProcess(name, command, args = []) {
-  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-  
-  if (processes[name]) {
-    processes[name].kill();
-    processes[name] = null;
-    mainWindow.webContents.send('process-status', name, 'Stopped');
-    // Small delay to ensure clean shutdown
-    await delay(SERVER_DELAYS.process);
+async function startService(name, waitUntilReady = false) {
+  const service = resolveService(name);
+  if (!service) {
+    console.error(`No executable is configured for ${name}.`);
+    setServiceStatus(name, 'Stopped');
+    return false;
   }
 
-  const started = launchProcess(name, command, args);
-  if (started) {
-    if (name === 'db' || name === 'auth' || name === 'world') {
-      const startDelay = SERVER_DELAYS[name];
-      mainWindow.webContents.send('process-status', name, `Starting-${startDelay}`);
-      await delay(startDelay);
-      mainWindow.webContents.send('process-status', name, 'Running');
-    } else {
-      mainWindow.webContents.send('process-status', name, 'Running');
-    }
+  if (await isPortReady(service.port)) {
+    setServiceStatus(name, 'Running');
+    return true;
   }
-  return started;
+
+  if (!processes[name] && !launchProcess(name, service.command, service.args)) {
+    return false;
+  }
+
+  setServiceStatus(name, 'Starting');
+  return waitUntilReady ? waitForServiceReady(name) : true;
+}
+
+async function stopProcess(name) {
+  const proc = processes[name];
+  if (!proc) {
+    if (SERVICE_NAMES.includes(name)) {
+      await updateServiceStatus(name);
+      return serviceStatus[name] === 'Stopped';
+    }
+    return true;
+  }
+
+  try {
+    if (process.platform === 'win32') {
+      const killer = spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { windowsHide: true });
+      await new Promise((resolve, reject) => {
+        killer.once('error', reject);
+        killer.once('exit', (code) => code === 0
+          ? resolve()
+          : reject(new Error(`taskkill exited with code ${code}`)));
+      });
+    } else {
+      proc.kill('SIGTERM');
+    }
+
+    await new Promise((resolve) => {
+      if (proc.exitCode !== null || proc.signalCode !== null) {
+        resolve();
+        return;
+      }
+      proc.once('exit', resolve);
+      setTimeout(resolve, 5000);
+    });
+    if (processes[name] === proc) {
+      processes[name] = null;
+    }
+    if (SERVICE_NAMES.includes(name)) {
+      await updateServiceStatus(name);
+      return serviceStatus[name] === 'Stopped';
+    }
+    mainWindow.webContents.send('process-status', name, 'Stopped');
+    return true;
+  } catch (error) {
+    console.error(`Error stopping ${name}:`, error);
+    return false;
+  }
+}
+
+async function restartProcess(name, command, args = []) {
+  if (SERVICE_NAMES.includes(name) && !await stopProcess(name)) {
+    return false;
+  }
+  if (processes[name] && !await stopProcess(name)) {
+    return false;
+  }
+  if (SERVICE_NAMES.includes(name)) {
+    return startService(name);
+  }
+  return launchProcess(name, command, args);
 }
 
 // IPC handlers for UI commands
 ipcMain.handle('launch', async (event, name) => {
-  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-  
-  const started = launchProcess(name, config.paths[name]);
-  if (started && ['db', 'auth', 'world'].includes(name)) {
-    await delay(SERVER_DELAYS[name]);
-    mainWindow.webContents.send('process-status', name, 'Running');
+  if (SERVICE_NAMES.includes(name)) {
+    return startService(name);
   }
-  return started;
+  return launchProcess(name, config.paths[name]);
 });
 
 ipcMain.handle('restart', async (event, name) => {
@@ -308,22 +517,14 @@ ipcMain.handle('reconfigure', async () => {
 
 // Handle starting all servers and client
 ipcMain.handle('start-all', async () => {
-  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-  
   try {
-    // Start servers in sequence: DB -> Auth -> World
-    const serverSequence = ['db', 'auth', 'world'];
-    
-    for (const serverName of serverSequence) {
-      if (!processes[serverName]) {
-        launchProcess(serverName, config.paths[serverName]);
-        const startDelay = SERVER_DELAYS[serverName];
-        mainWindow.webContents.send('process-status', serverName, `Starting-${startDelay}`);
-        await delay(startDelay);
-        mainWindow.webContents.send('process-status', serverName, 'Running');
+    for (const serverName of SERVICE_NAMES) {
+      const ready = await startService(serverName, true);
+      if (!ready) {
+        console.error(`${serverName} did not become ready before the startup timeout.`);
+        return false;
       }
     }
-    
     return true;
   } catch (error) {
     console.error('Error in start-all:', error);
@@ -333,75 +534,21 @@ ipcMain.handle('start-all', async () => {
 
 // Handle individual process stop
 ipcMain.handle('stop', async (event, name) => {
-  if (!processes[name]) return false;
-
-  try {
-    // On Windows, we need to kill the entire process tree
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', processes[name].pid, '/f', '/t']);
-    } else {
-      processes[name].kill('SIGTERM');
-    }
-    
-    // Wait for the process to actually end
-    await new Promise((resolve) => {
-      processes[name].once('exit', resolve);
-      // Fallback if process doesn't exit
-      setTimeout(resolve, 5000);
-    });
-    
-    processes[name] = null;
-    console.log(`${name} process terminated`);
-    return true;
-  } catch (error) {
-    console.error(`Error killing ${name} process:`, error);
-    return false;
-  }
+  return stopProcess(name);
 });
 
 // Handle graceful shutdown of all servers
 ipcMain.handle('stop-all', async () => {
-  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-  
-  const stopProcess = async (name) => {
-    if (!processes[name]) return true;
-    
-    try {
-      // On Windows, we need to kill the entire process tree
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', processes[name].pid, '/f', '/t']);
-      } else {
-        processes[name].kill('SIGTERM');
-      }
-      
-      // Wait for the process to actually end
-      await new Promise((resolve) => {
-        processes[name].once('exit', resolve);
-        // Fallback if process doesn't exit
-        setTimeout(resolve, 5000);
-      });
-      
-      processes[name] = null;
-      console.log(`${name} process terminated`);
-      return true;
-    } catch (error) {
-      console.error(`Error killing ${name} process:`, error);
-      return false;
-    }
-  };
+  const results = [];
+  for (const name of ['world', 'auth', 'db']) {
+    results.push(await stopProcess(name));
+  }
+  return results.every(Boolean);
+});
 
-  // Stop world server first
-  await stopProcess('world');
-  await delay(1000);
-  
-  // Then stop auth server
-  await stopProcess('auth');
-  await delay(1000);
-  
-  // Finally stop MySQL/DB
-  await stopProcess('db');
-  
-  return true;
+ipcMain.handle('get-service-statuses', async () => {
+  await Promise.all(SERVICE_NAMES.map(updateServiceStatus));
+  return { ...serviceStatus };
 });
 
 app.whenReady().then(() => {
@@ -414,77 +561,20 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Handle restart all servers
+// Restart only services managed by this launcher, then wait for actual readiness.
 ipcMain.handle('restart-all', async () => {
-  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-  
-  const killProcess = async (proc, name) => {
-    if (!proc) return;
-    
-    try {
-      // On Windows, we need to kill the entire process tree
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', proc.pid, '/f', '/t']);
-      } else {
-        proc.kill('SIGTERM');
-      }
-      
-      // Wait for the process to actually end
-      await new Promise((resolve) => {
-        proc.once('exit', resolve);
-        // Fallback if process doesn't exit
-        setTimeout(resolve, 5000);
-      });
-      
-      processes[name] = null;
-      mainWindow.webContents.send('process-status', name, 'Stopped');
-      console.log(`${name} process terminated`);
-    } catch (error) {
-      console.error(`Error killing ${name} process:`, error);
-    }
-  };
-
   try {
-    // Stop all servers first
-    if (processes['world']) {
-      await killProcess(processes['world'], 'world');
-      await delay(2000);
+    for (const name of ['world', 'auth', 'db']) {
+      if (!await stopProcess(name)) {
+        return false;
+      }
     }
-    
-    if (processes['auth']) {
-      await killProcess(processes['auth'], 'auth');
-      await delay(2000);
+    for (const name of SERVICE_NAMES) {
+      if (!await startService(name, true)) {
+        console.error(`${name} did not become ready before the startup timeout.`);
+        return false;
+      }
     }
-    
-    if (processes['db']) {
-      await killProcess(processes['db'], 'db');
-    }
-
-    // Wait additional 5 seconds before starting
-    await delay(5000);
-    
-    // Start all servers again
-    if (!processes['db']) {
-      launchProcess('db', config.paths.db);
-      mainWindow.webContents.send('process-status', 'db', 'Starting-5000');
-      await delay(5000);
-      mainWindow.webContents.send('process-status', 'db', 'Running');
-    }
-    
-    if (!processes['auth']) {
-      launchProcess('auth', config.paths.auth);
-      mainWindow.webContents.send('process-status', 'auth', 'Starting-3000');
-      await delay(3000);
-      mainWindow.webContents.send('process-status', 'auth', 'Running');
-    }
-    
-    if (!processes['world']) {
-      launchProcess('world', config.paths.world);
-      mainWindow.webContents.send('process-status', 'world', 'Starting-15000');
-      await delay(15000);
-      mainWindow.webContents.send('process-status', 'world', 'Running');
-    }
-    
     return true;
   } catch (error) {
     console.error('Error in restart-all:', error);

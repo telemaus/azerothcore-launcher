@@ -44,73 +44,37 @@ for (const [name, btns] of Object.entries(buttons)) {
   }
 }
 
-// Listen for status updates from main process
-ipcRenderer.on('process-status', (event, name, status) => {
-  if (buttons[name]) {
-    const statusElement = buttons[name].status;
-    if (status === 'Running') {
-      statusElement.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" fill="#22c55e" viewBox="0 0 256 256">
-          <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"></path>
-        </svg>`;
-    } else if (status.startsWith('Starting-')) {
-      const duration = parseInt(status.split('-')[1]);
-      statusElement.innerHTML = `
-        <svg class="progress-circle" width="18px" height="18px" viewBox="0 0 32 32">
-          <circle
-            class="progress-background"
-            r="14"
-            cx="16"
-            cy="16"
-            fill="none"
-            stroke="#e5e5e5"
-            stroke-width="2.5"
-          />
-          <circle
-            class="progress-indicator"
-            r="14"
-            cx="16"
-            cy="16"
-            fill="none"
-            stroke="#3b82f6"
-            stroke-width="2.5"
-            stroke-dasharray="87.96"
-            stroke-dashoffset="87.96"
-            transform="rotate(-90 16 16)"
-            style="animation: progress-animation ${duration}ms ease-out forwards"
-          />
-        </svg>`;
-      // Add the animation style if it doesn't exist
-      if (!document.getElementById('progress-animation-style')) {
-        const style = document.createElement('style');
-        style.id = 'progress-animation-style';
-        style.textContent = `
-          @keyframes progress-animation {
-            0% {
-              stroke-dashoffset: 87.96;
-            }
-            100% {
-              stroke-dashoffset: 0;
-            }
-          }
-          .progress-circle {
-            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
-          }
-        `;
-        document.head.appendChild(style);
-      }
-    } else if (status === 'Error') {
-      statusElement.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" fill="#ef4444" viewBox="0 0 256 256">
-          <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm37.66,130.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path>
-        </svg>`;
-    } else {
-      statusElement.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256">
-          <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"></path>
-        </svg>`;
-    }
+function renderServiceStatus(name, status) {
+  const statusElement = buttons[name] && buttons[name].status;
+  if (!statusElement) {
+    return;
   }
+
+  const color = status === 'Running' ? '#22c55e'
+    : status === 'Starting' ? '#f59e0b'
+      : status === 'Error' ? '#ef4444'
+        : '#9ca3af';
+  const shape = status === 'Stopped'
+    ? '<circle cx="128" cy="128" r="86" fill="none" stroke="#9ca3af" stroke-width="18"></circle>'
+    : `<circle cx="128" cy="128" r="58" fill="${color}"></circle>`;
+  statusElement.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 256 256" aria-hidden="true">${shape}</svg>`;
+  statusElement.title = status === 'Running' ? 'Ready'
+    : status === 'Starting' ? 'Starting'
+      : status === 'Error' ? 'Error'
+        : 'Stopped';
+  statusElement.setAttribute('aria-label', statusElement.title);
+}
+
+ipcRenderer.on('process-status', (_event, name, status) => {
+  renderServiceStatus(name, status);
+});
+
+ipcRenderer.invoke('get-service-statuses').then((statuses) => {
+  for (const [name, status] of Object.entries(statuses)) {
+    renderServiceStatus(name, status);
+  }
+}).catch((error) => {
+  console.error('Could not load service statuses:', error);
 });
 
 // Add start all button handler
@@ -166,4 +130,3 @@ restartAllButton.addEventListener('click', async () => {
     restartAllButton.disabled = false;
   }
 });
-

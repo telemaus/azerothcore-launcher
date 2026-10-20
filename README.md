@@ -31,13 +31,13 @@ The AzerothCore Launcher is a helpful tool that makes it easy to manage your loc
 2. **Getting Started**
    - When you first open the launcher, use the Server Paths window to configure your server files
    - Use the Options button to review or change paths later
-   - Use Browse to select a file, or the folder icon to locate the current file in File Explorer
+   - Use Browse to select a file, or the folder icon to locate it in File Explorer; MySQL accepts `start_mysql.bat` or `mysqld.exe`
    - Once setup is complete, you're ready to start managing your server!
 
 3. **Managing Your Server**
    - Use the simple buttons to start or stop different server components
    - MySQL runs in a visible console when its batch file is opened directly, and hidden in the background when started by the launcher
-   - Monitor the status of your server directly from the launcher
+   - Service status is polled from the configured MySQL, auth, and world TCP ports: empty means stopped, yellow means starting, and green means ready
    - Access basic server controls without needing to use command lines
 
 ## Need Help?
