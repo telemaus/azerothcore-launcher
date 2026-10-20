@@ -31,6 +31,7 @@ The AzerothCore Launcher is a helpful tool that makes it easy to manage your loc
 2. **Getting Started**
    - When you first open the launcher, use the Server Paths window to configure your server files
    - Use the Options button to review or change paths later
+   - The Server Paths window is fixed at 747 × 383 and hides scrollbars so all four path rows fit
    - Use Browse to select a file, or the folder icon to locate it in File Explorer; MySQL accepts `start_mysql.bat` or `mysqld.exe`
    - Once setup is complete, you're ready to start managing your server!
 

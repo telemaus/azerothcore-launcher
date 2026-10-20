@@ -69,12 +69,16 @@ function openPathSettings() {
   }
 
   pathSettingsWindow = new BrowserWindow({
-    width: 900,
-    height: 440,
-    minWidth: 760,
-    minHeight: 420,
+    width: 747,
+    height: 383,
+    minWidth: 747,
+    minHeight: 383,
+    maxWidth: 747,
+    maxHeight: 383,
     parent: mainWindow,
     modal: true,
+    resizable: false,
+    maximizable: false,
     icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       nodeIntegration: true,

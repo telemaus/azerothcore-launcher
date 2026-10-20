@@ -1,6 +1,6 @@
 {
   "name": "azerothcore-launcher",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "description": "🚀 Desktop launcher for AzerothCore WoW private servers - Easy one-click management of database, authentication, and world server components with a beautiful GUI",
   "main": "main.js",
   "scripts": {
