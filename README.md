@@ -17,6 +17,7 @@ The AzerothCore Launcher is a helpful tool that makes it easy to manage your loc
 ## Features
 
 - Easy start/stop controls for server components
+- Configure server paths together in one window, with browse and File Explorer shortcuts
 - User-friendly interface
 - All-in-one control panel for your server/client
 
