@@ -24,6 +24,7 @@ const SERVICES = {
   world: { port: 8085, timeout: 240000, configName: path.join('configs', 'worldserver.conf'), portKey: 'WorldServerPort' }
 };
 const SERVICE_NAMES = Object.keys(SERVICES);
+const SERVICE_START_ORDER = ['db', 'world', 'auth'];
 const SERVICE_POLL_INTERVAL = 1500;
 
 async function createWindow() {
@@ -656,7 +657,7 @@ ipcMain.handle('reconfigure', async () => {
 // Handle starting all servers and client
 ipcMain.handle('start-all', async () => {
   try {
-    for (const serverName of SERVICE_NAMES) {
+    for (const serverName of SERVICE_START_ORDER) {
       const ready = await startService(serverName, true);
       if (!ready) {
         console.error(`${serverName} did not become ready before the startup timeout.`);
@@ -707,7 +708,7 @@ ipcMain.handle('restart-all', async () => {
         return false;
       }
     }
-    for (const name of SERVICE_NAMES) {
+    for (const name of SERVICE_START_ORDER) {
       if (!await startService(name, true)) {
         console.error(`${name} did not become ready before the startup timeout.`);
         return false;
